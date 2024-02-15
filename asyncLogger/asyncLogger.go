@@ -82,28 +82,6 @@ func (stdOutAsyncLogger *StdOutAsyncLogger) Listen() error {
 	return nil
 }
 
-/*
-// the problem with this flush function is that it will block the execution
-// because, it will sit there and wait for a new msg, so all the ticking strategy
-// setup get blown away.
-
-func (stdOutAsyncLogger *StdOutAsyncLogger) Flush(timeStamp time.Time) error {
-
-	fmt.Fprintf(os.Stdout, "Start of tick ===============\n")
-	for msg := range stdOutAsyncLogger.Buffer {
-		fmt.Fprintf(os.Stdout, "[Minute:%d, Second: %d, Milisecond:%d]\t", timeStamp.Minute(), timeStamp.Second(), timeStamp.UnixMilli())
-		fmt.Fprintf(os.Stdout, "@%s:\t", stdOutAsyncLogger.Config.Name)
-		fmt.Fprintf(os.Stdout, "(%s)\t", stdOutAsyncLogger.Config.SeverityLevel)
-		fmt.Fprintf(os.Stdout, "%s\n", msg)
-	}
-	fmt.Fprintf(os.Stdout, "End of tick ===============\n")
-
-	// since we are flushing to the stdout, no network or file system related
-	// issues should occure.
-	return nil
-}
-*/
-
 func (stdOutAsyncLogger *StdOutAsyncLogger) Flush(timeStamp time.Time) error {
 
 	// FlushTimeOut is not really used as a time out since we will allways
