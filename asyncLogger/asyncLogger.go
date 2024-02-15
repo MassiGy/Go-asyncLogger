@@ -1,7 +1,6 @@
 package asyncLogger
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"time"
@@ -84,11 +83,6 @@ func (stdOutAsyncLogger *StdOutAsyncLogger) Listen() error {
 
 func (stdOutAsyncLogger *StdOutAsyncLogger) Flush(timeStamp time.Time) error {
 
-	// FlushTimeOut is not really used as a time out since we will allways
-	// meet that deadline, and that is due to the fact that listening to
-	// the buffer is blocking, thus with the select statement we will be
-	// able to cut it at that deadline
-	ctx, cancel := context.WithTimeout(context.Background(), stdOutAsyncLogger.Config.FlushTimeOut)
 	fmt.Fprintf(os.Stdout, "Start of tick ===============\n")
 
 	// while true
@@ -103,9 +97,8 @@ func (stdOutAsyncLogger *StdOutAsyncLogger) Flush(timeStamp time.Time) error {
 				fmt.Fprintf(os.Stdout, "(%s)\t", stdOutAsyncLogger.Config.SeverityLevel)
 				fmt.Fprintf(os.Stdout, "%s\n", msg)
 			}
-		case <-ctx.Done():
+		case <-time.After(stdOutAsyncLogger.Config.FlushTimeOut):
 			fmt.Fprintf(os.Stdout, "End of tick ===============\n")
-			cancel()
 			return nil
 		}
 	}
