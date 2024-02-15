@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+var stdOutAsyncLogger asyncLogger.AsyncLogger
+
 func main() {
 
 	/*
@@ -59,17 +61,18 @@ func main() {
 		Name:          "simpleLogger",
 		SeverityLevel: "info",
 		Tick:          *time.NewTicker(time.Second),
-	}
 
-	stdOutAsyncLogger := asyncLogger.StdOutAsyncLogger{
 		// you can make a buffred channel of cap <= 3 * 1 / (1/4)
 		// since we tick every 1 second, and in every 1 second there
 		// is 4 one-forth of a second, and in each one of these we
 		// emit 3msg.
 		// TL;DR: you can expand the length of this buffred channel up until 12 slots
-		Buffer:       make(chan string, 3),
-		Config:       config,
+		Buffer:       make(chan []byte),
 		FlushTimeOut: 500 * time.Millisecond, // .5 second deadline
+	}
+
+	stdOutAsyncLogger = &asyncLogger.StdOutAsyncLogger{
+		Config: config,
 	}
 
 	// flush on every tick
@@ -88,7 +91,7 @@ func main() {
 			time.Sleep(250 * time.Millisecond)
 		}
 		go func(id int) {
-			handler <- "Hello from go routine n°" + strconv.Itoa(id)
+			handler <- []byte("Hello from go routine n°" + strconv.Itoa(id))
 
 			// on return, unregister self
 			defer waitGroup.Done()

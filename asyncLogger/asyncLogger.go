@@ -9,6 +9,12 @@ import (
 
 type AsyncLoggerConfig struct {
 
+	// @todo: make the fields private, espeacially for the buffer
+	//		  since the users of the logger only need the writing
+	//        end of the buffer. Otherwise you can have a buffer leak
+	//        where another part of your program consumes the buffer
+	//        content.
+
 	// set the name of the logger
 	Name string
 
@@ -17,39 +23,41 @@ type AsyncLoggerConfig struct {
 
 	// set a ticker for autoflush behavior
 	Tick time.Ticker
+
+	Buffer       chan []byte
+	IsAutoFlush  bool
+	FlushTimeOut time.Duration
 }
 
 type AsyncLogger interface {
 	GetConfig() AsyncLoggerConfig
 
 	GetAsyncLoggerHandle() chan<- []byte
-	SetAutoFlush() (AsyncLogger, error)
+	SetAutoFlush() error
 	Listen() error
+	Flush(time.Time) error
+	Close() error
 }
 
 type StdOutAsyncLogger struct {
-	// @todo: make the fields private, espeacially for the buffer
-	//		  since the users of the logger only need the writing
-	//        end of the buffer. Otherwise you can have a buffer leak
-	//        where another part of your program consumes the buffer
-	//        content.
-	Buffer       chan string
-	IsAutoFlush  bool
-	FlushTimeOut time.Duration
 
 	// config object, we can also embbed the type instead
 	Config AsyncLoggerConfig
 }
 
+func (stdOutAsyncLogger StdOutAsyncLogger) GetConfig() AsyncLoggerConfig {
+	return stdOutAsyncLogger.Config
+}
+
 // this will act as a middelware between the users of the channel and the logger
 // internals. Hopefully this will make the users only use the channel as a write-to channel
 // @todo: to fix this incertainty, make the buffer field private
-func (stdOutAsyncLogger *StdOutAsyncLogger) GetAsyncLoggerHandle() chan<- string {
-	return stdOutAsyncLogger.Buffer
+func (stdOutAsyncLogger *StdOutAsyncLogger) GetAsyncLoggerHandle() chan<- []byte {
+	return stdOutAsyncLogger.Config.Buffer
 }
 
 func (stdOutAsyncLogger *StdOutAsyncLogger) SetAutoFlush() error {
-	stdOutAsyncLogger.IsAutoFlush = true
+	stdOutAsyncLogger.Config.IsAutoFlush = true
 
 	// @todo check if the ticker is proprely set
 
@@ -102,7 +110,7 @@ func (stdOutAsyncLogger *StdOutAsyncLogger) Flush(timeStamp time.Time) error {
 	// meet that deadline, and that is due to the fact that listening to
 	// the buffer is blocking, thus with the select statement we will be
 	// able to cut it at that deadline
-	ctx, cancel := context.WithTimeout(context.Background(), stdOutAsyncLogger.FlushTimeOut)
+	ctx, cancel := context.WithTimeout(context.Background(), stdOutAsyncLogger.Config.FlushTimeOut)
 	fmt.Fprintf(os.Stdout, "Start of tick ===============\n")
 
 	// while true
@@ -110,7 +118,7 @@ func (stdOutAsyncLogger *StdOutAsyncLogger) Flush(timeStamp time.Time) error {
 
 		// either consume the msg, or quit
 		select {
-		case msg := <-stdOutAsyncLogger.Buffer:
+		case msg := <-stdOutAsyncLogger.Config.Buffer:
 			{
 				fmt.Fprintf(os.Stdout, "[Minute:%d, Second: %d, Milisecond:%d]\t", timeStamp.Minute(), timeStamp.Second(), timeStamp.UnixMilli())
 				fmt.Fprintf(os.Stdout, "@%s:\t", stdOutAsyncLogger.Config.Name)
@@ -128,7 +136,7 @@ func (stdOutAsyncLogger *StdOutAsyncLogger) Flush(timeStamp time.Time) error {
 func (stdOutAsyncLogger *StdOutAsyncLogger) Close() error {
 
 	// we need to close the buffer
-	close(stdOutAsyncLogger.Buffer)
+	close(stdOutAsyncLogger.Config.Buffer)
 
 	return nil
 }
