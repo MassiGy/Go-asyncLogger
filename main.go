@@ -7,43 +7,49 @@ import (
 	"time"
 )
 
+// you can make this public for package-wide use
 var stdOutAsyncLogger asyncLogger.AsyncLogger
 
 func main() {
 
-	config := asyncLogger.AsyncLoggerConfig{
-		Name:          "simpleLogger",
-		SeverityLevel: "info",
-		Tick:          *time.NewTicker(time.Second),
+	// this uses the builder pattern, which is
+	// good style but also forces the users to
+	// use a diffrente instance after each mutation.
+	// For loggers, it is more suitable.
+	ticker := *time.NewTicker(time.Second)
+	channel := make(chan []byte, 3)
 
-		// you can make a buffred channel of cap <= 3 * 1 / (1/4)
-		// since we tick every 1 second, and in every 1 second there
-		// is 4 one-forth of a second, and in each one of these we
-		// emit 3msg.
-		// TL;DR: you can expand the length of this buffred channel up until 12 slots
-		Buffer:       make(chan []byte),
-		FlushTimeOut: 500 * time.Millisecond, // .5 second deadline
-	}
+	config := asyncLogger.AsyncLoggerConfig{}.
+		WithLoggerName("simpleLogger").
+		WithLoggerSeverity(asyncLogger.INFO).
+		WithTimeTick(ticker).
+		WithBuffer(channel).
+		WithAutoFlushSetTo(true).
+		WithFlushTimeOut(100 * time.Millisecond)
 
 	stdOutAsyncLogger = &asyncLogger.StdOutAsyncLogger{
 		Config: config,
 	}
 
-	// flush on every tick
-	stdOutAsyncLogger.SetAutoFlush()
-	go stdOutAsyncLogger.Listen() // listen for new logs in the background
+	go func() {
+		ticker.Reset(time.Second)
+		stdOutAsyncLogger.Listen() // listen for new logs in the background
+	}()
 
 	// get the loggin handler
 	handler := stdOutAsyncLogger.GetAsyncLoggerHandle()
 
 	var waitGroup sync.WaitGroup
 	for i := 0; i < 30; i++ {
-		// register the go routine
-		waitGroup.Add(1)
 
+		// simulate a latency
 		if i%3 == 0 {
 			time.Sleep(250 * time.Millisecond)
 		}
+
+		// register the go routine
+		waitGroup.Add(1)
+
 		go func(id int) {
 			handler <- []byte("Hello from go routine n°" + strconv.Itoa(id))
 

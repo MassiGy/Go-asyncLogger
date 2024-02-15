@@ -6,26 +6,69 @@ import (
 	"time"
 )
 
+// make the severityLevel type private, since this is the
+// underlying type for our enum. This will prevent users from
+// defining other entries of the same nature as our enums
+type severityLevel int
+type severityDict map[severityLevel]string
+
+const (
+	DEBUG = iota // starts at 0
+	INFO
+	WARNNING
+	DANGER
+	CRITICAL
+)
+
+var severityLevels severityDict = severityDict{
+	DEBUG:    "DEBUG",
+	INFO:     "INFO",
+	WARNNING: "WARNNING",
+	DANGER:   "DANGER",
+	CRITICAL: "CRITICAL",
+}
+
 type AsyncLoggerConfig struct {
 
-	// @todo: make the fields private, espeacially for the buffer
-	//		  since the users of the logger only need the writing
-	//        end of the buffer. Otherwise you can have a buffer leak
-	//        where another part of your program consumes the buffer
-	//        content.
-
 	// set the name of the logger
-	Name string
+	name string
 
 	// set the Severitylevel of the logger
-	SeverityLevel string
+	severityLevel severityLevel
 
 	// set a ticker for autoflush behavior
-	Tick time.Ticker
+	tick time.Ticker
 
-	Buffer       chan []byte
-	IsAutoFlush  bool
-	FlushTimeOut time.Duration
+	buffer       chan []byte
+	isAutoFlush  bool
+	flushTimeOut time.Duration
+}
+
+func (conf AsyncLoggerConfig) WithLoggerName(name string) AsyncLoggerConfig {
+	conf.name = name
+	return conf
+}
+func (conf AsyncLoggerConfig) WithLoggerSeverity(severity severityLevel) AsyncLoggerConfig {
+	conf.severityLevel = severity
+	return conf
+}
+
+func (conf AsyncLoggerConfig) WithTimeTick(tick time.Ticker) AsyncLoggerConfig {
+	conf.tick = tick
+	return conf
+}
+
+func (conf AsyncLoggerConfig) WithBuffer(buffer chan []byte) AsyncLoggerConfig {
+	conf.buffer = buffer
+	return conf
+}
+func (conf AsyncLoggerConfig) WithAutoFlushSetTo(isAutoFlush bool) AsyncLoggerConfig {
+	conf.isAutoFlush = isAutoFlush
+	return conf
+}
+func (conf AsyncLoggerConfig) WithFlushTimeOut(flushTimeOut time.Duration) AsyncLoggerConfig {
+	conf.flushTimeOut = flushTimeOut
+	return conf
 }
 
 type AsyncLogger interface {
@@ -50,16 +93,12 @@ func (stdOutAsyncLogger StdOutAsyncLogger) GetConfig() AsyncLoggerConfig {
 
 // this will act as a middelware between the users of the channel and the logger
 // internals. Hopefully this will make the users only use the channel as a write-to channel
-// @todo: to fix this incertainty, make the buffer field private
 func (stdOutAsyncLogger *StdOutAsyncLogger) GetAsyncLoggerHandle() chan<- []byte {
-	return stdOutAsyncLogger.Config.Buffer
+	return stdOutAsyncLogger.Config.buffer
 }
 
 func (stdOutAsyncLogger *StdOutAsyncLogger) SetAutoFlush() error {
-	stdOutAsyncLogger.Config.IsAutoFlush = true
-
-	// @todo check if the ticker is proprely set
-
+	stdOutAsyncLogger.Config.isAutoFlush = true
 	return nil
 }
 
@@ -69,7 +108,7 @@ func (stdOutAsyncLogger *StdOutAsyncLogger) Listen() error {
 	)
 
 	// for every tick, flush to logger sink
-	for tick := range stdOutAsyncLogger.Config.Tick.C {
+	for tick := range stdOutAsyncLogger.Config.tick.C {
 
 		// pass the time instant to flush
 		err = stdOutAsyncLogger.Flush(tick)
@@ -90,14 +129,14 @@ func (stdOutAsyncLogger *StdOutAsyncLogger) Flush(timeStamp time.Time) error {
 
 		// either consume the msg, or quit
 		select {
-		case msg := <-stdOutAsyncLogger.Config.Buffer:
+		case msg := <-stdOutAsyncLogger.Config.buffer:
 			{
 				fmt.Fprintf(os.Stdout, "[Minute:%d, Second: %d, Milisecond:%d]\t", timeStamp.Minute(), timeStamp.Second(), timeStamp.UnixMilli())
-				fmt.Fprintf(os.Stdout, "@%s:\t", stdOutAsyncLogger.Config.Name)
-				fmt.Fprintf(os.Stdout, "(%s)\t", stdOutAsyncLogger.Config.SeverityLevel)
+				fmt.Fprintf(os.Stdout, "@%s:\t", stdOutAsyncLogger.Config.name)
+				fmt.Fprintf(os.Stdout, "(%s)\t", severityLevels[stdOutAsyncLogger.Config.severityLevel])
 				fmt.Fprintf(os.Stdout, "%s\n", msg)
 			}
-		case <-time.After(stdOutAsyncLogger.Config.FlushTimeOut):
+		case <-time.After(stdOutAsyncLogger.Config.flushTimeOut):
 			fmt.Fprintf(os.Stdout, "End of tick ===============\n")
 			return nil
 		}
@@ -107,7 +146,7 @@ func (stdOutAsyncLogger *StdOutAsyncLogger) Flush(timeStamp time.Time) error {
 func (stdOutAsyncLogger *StdOutAsyncLogger) Close() error {
 
 	// we need to close the buffer
-	close(stdOutAsyncLogger.Config.Buffer)
+	close(stdOutAsyncLogger.Config.buffer)
 
 	return nil
 }
